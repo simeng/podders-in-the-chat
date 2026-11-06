@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Podders in the Chat</string>
+    <string name="playback_notification_channel_name">Podcast Playback Controls</string>
+    <string name="playback_notification_channel_description">Displays current episode info and playback controls</string>
+</resources>
