@@ -152,9 +152,9 @@ class FeedRepository(
                 description = "Full stack web development podcast with Wes Bos and Scott Tolinski."
             ),
             SampleFeed(
-                title = "NPR News Now",
-                url = "https://feeds.npr.org/500005/podcast.xml",
-                description = "The latest news in five minutes, updated hourly."
+                title = "Rad Crew Podcast",
+                url = "https://feed.radcrew.net/radcrew",
+                description = "Norges største og eldste podcast om spill, popkultur og underholdning."
             ),
             SampleFeed(
                 title = "The Changelog: Software Development",

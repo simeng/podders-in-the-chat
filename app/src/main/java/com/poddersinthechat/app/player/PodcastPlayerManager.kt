@@ -115,12 +115,12 @@ class PodcastPlayerManager(
                 _isPlaying.value = isPlaying
                 if (isPlaying) {
                     startProgressTracker()
-                    // Start foreground service to display media notification and prevent suspension
                     PodcastPlaybackService.start(context)
                 } else {
                     stopProgressTracker()
                     persistCurrentProgress()
                 }
+                PodcastPlaybackService.update(context)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -133,11 +133,13 @@ class PodcastPlayerManager(
                 } else if (playbackState == Player.STATE_ENDED) {
                     handlePlaybackEnded()
                 }
+                PodcastPlaybackService.update(context)
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 _isLoading.value = false
                 _isPlaying.value = false
+                PodcastPlaybackService.update(context)
             }
 
             override fun onPositionDiscontinuity(
@@ -147,6 +149,7 @@ class PodcastPlayerManager(
             ) {
                 _playbackPositionMs.value = player.currentPosition
                 persistCurrentProgress()
+                PodcastPlaybackService.update(context)
             }
         })
     }
@@ -200,6 +203,7 @@ class PodcastPlayerManager(
 
         player.prepare()
         player.play()
+        PodcastPlaybackService.update(context)
     }
 
     fun togglePlayPause() {
