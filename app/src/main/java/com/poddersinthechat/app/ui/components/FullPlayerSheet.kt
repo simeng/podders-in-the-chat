@@ -233,14 +233,14 @@ fun FullPlayerSheet(
                     )
                 }
 
-                // Skip -15s
+                // Skip -10s
                 IconButton(
                     onClick = onSkipBackward,
                     modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Replay10,
-                        contentDescription = "Rewind 15 seconds",
+                        contentDescription = "Rewind 10 seconds",
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(36.dp)
                     )

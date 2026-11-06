@@ -4,15 +4,23 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.poddersinthechat.app.MainActivity
+import com.poddersinthechat.app.R
 import com.poddersinthechat.app.data.model.Episode
 import com.poddersinthechat.app.data.repository.FeedRepository
 import com.poddersinthechat.app.service.PodcastPlaybackService
@@ -33,9 +41,9 @@ class PodcastPlayerManager(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // ExoPlayer configured with WakeMode and AudioAttributes for screen-off background playback
-    val player: ExoPlayer = ExoPlayer.Builder(context)
-        .setSeekBackIncrementMs(15_000)
+    // Base ExoPlayer configured with WakeMode and AudioAttributes
+    private val basePlayer: ExoPlayer = ExoPlayer.Builder(context)
+        .setSeekBackIncrementMs(10_000)
         .setSeekForwardIncrementMs(30_000)
         .setAudioAttributes(
             AudioAttributes.Builder()
@@ -50,7 +58,65 @@ class PodcastPlayerManager(
             playWhenReady = true
         }
 
-    // MediaSession linked to the player with open-app pending intent and command permissions
+    // ForwardingPlayer that suppresses SEEK_TO_PREVIOUS and SEEK_TO_NEXT
+    // so Android 13+ System Media Controls replaces the "previous track" button with Rewind and Fast Forward
+    val player: Player = object : ForwardingPlayer(basePlayer) {
+        override fun getAvailableCommands(): Player.Commands {
+            return super.getAvailableCommands().buildUpon()
+                .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                .remove(Player.COMMAND_SEEK_TO_NEXT)
+                .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                .add(Player.COMMAND_SEEK_BACK)
+                .add(Player.COMMAND_SEEK_FORWARD)
+                .add(Player.COMMAND_PLAY_PAUSE)
+                .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                .build()
+        }
+
+        override fun isCommandAvailable(command: Int): Boolean {
+            return when (command) {
+                Player.COMMAND_SEEK_TO_PREVIOUS,
+                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_NEXT,
+                Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> false
+                Player.COMMAND_SEEK_BACK,
+                Player.COMMAND_SEEK_FORWARD,
+                Player.COMMAND_PLAY_PAUSE,
+                Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM -> true
+                else -> super.isCommandAvailable(command)
+            }
+        }
+
+        override fun seekBack() {
+            basePlayer.seekBack()
+        }
+
+        override fun seekForward() {
+            basePlayer.seekForward()
+        }
+    }
+
+    val customActionRewind = SessionCommand(CUSTOM_ACTION_REWIND_10, Bundle.EMPTY)
+    val customActionForward = SessionCommand(CUSTOM_ACTION_FORWARD_30, Bundle.EMPTY)
+
+    private val rewindCustomButton = CommandButton.Builder()
+        .setSessionCommand(customActionRewind)
+        .setIconResId(R.drawable.ic_replay_10)
+        .setCustomIconResId(R.drawable.ic_replay_10)
+        .setDisplayName("Rewind 10s")
+        .setEnabled(true)
+        .build()
+
+    private val forwardCustomButton = CommandButton.Builder()
+        .setSessionCommand(customActionForward)
+        .setIconResId(R.drawable.ic_forward_30)
+        .setCustomIconResId(R.drawable.ic_forward_30)
+        .setDisplayName("Forward 30s")
+        .setEnabled(true)
+        .build()
+
+    // MediaSession linked to the ForwardingPlayer with open-app pending intent and custom layout
     val mediaSession: MediaSession = run {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -64,29 +130,54 @@ class PodcastPlayerManager(
 
         MediaSession.Builder(context, player)
             .setSessionActivity(sessionActivity)
+            .setCustomLayout(listOf(rewindCustomButton, forwardCustomButton))
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
                     session: MediaSession,
                     controller: MediaSession.ControllerInfo
                 ): MediaSession.ConnectionResult {
-                    val defaultResult = super.onConnect(session, controller)
-                    val playerCommands = defaultResult.availablePlayerCommands
-                        .buildUpon()
-                        .add(Player.COMMAND_PLAY_PAUSE)
+                    val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(customActionRewind)
+                        .add(customActionForward)
+                        .build()
+
+                    val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                        .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                        .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                        .remove(Player.COMMAND_SEEK_TO_NEXT)
+                        .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                         .add(Player.COMMAND_SEEK_BACK)
                         .add(Player.COMMAND_SEEK_FORWARD)
-                        .add(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+                        .add(Player.COMMAND_PLAY_PAUSE)
                         .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-                        .add(Player.COMMAND_STOP)
                         .build()
 
                     return MediaSession.ConnectionResult.accept(
-                        defaultResult.availableSessionCommands,
+                        sessionCommands,
                         playerCommands
                     )
                 }
+
+                override fun onCustomCommand(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    customCommand: SessionCommand,
+                    args: Bundle
+                ): ListenableFuture<SessionResult> {
+                    when (customCommand.customAction) {
+                        CUSTOM_ACTION_REWIND_10 -> {
+                            skipBackward(10)
+                        }
+                        CUSTOM_ACTION_FORWARD_30 -> {
+                            skipForward(30)
+                        }
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
             })
-            .build()
+            .build().apply {
+                setCustomLayout(listOf(rewindCustomButton, forwardCustomButton))
+            }
     }
 
     private val _currentEpisode = MutableStateFlow<Episode?>(null)
@@ -217,6 +308,7 @@ class PodcastPlayerManager(
     fun pause() {
         player.pause()
         persistCurrentProgress()
+        PodcastPlaybackService.update(context)
     }
 
     fun resume() {
@@ -225,6 +317,7 @@ class PodcastPlayerManager(
         }
         PodcastPlaybackService.start(context)
         player.play()
+        PodcastPlaybackService.update(context)
     }
 
     fun seekTo(positionMs: Long) {
@@ -232,18 +325,17 @@ class PodcastPlayerManager(
         player.seekTo(safePos)
         _playbackPositionMs.value = safePos
         persistCurrentProgress()
+        PodcastPlaybackService.update(context)
     }
 
     fun skipForward(seconds: Int = 30) {
-        player.seekForward()
-        _playbackPositionMs.value = player.currentPosition
-        persistCurrentProgress()
+        val target = player.currentPosition + (seconds * 1000L)
+        seekTo(target)
     }
 
-    fun skipBackward(seconds: Int = 15) {
-        player.seekBack()
-        _playbackPositionMs.value = player.currentPosition
-        persistCurrentProgress()
+    fun skipBackward(seconds: Int = 10) {
+        val target = (player.currentPosition - (seconds * 1000L)).coerceAtLeast(0L)
+        seekTo(target)
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -316,7 +408,12 @@ class PodcastPlayerManager(
         stopProgressTracker()
         persistCurrentProgress()
         mediaSession.release()
-        player.release()
+        basePlayer.release()
         PodcastPlaybackService.stop(context)
+    }
+
+    companion object {
+        const val CUSTOM_ACTION_REWIND_10 = "com.poddersinthechat.app.action.REWIND_10"
+        const val CUSTOM_ACTION_FORWARD_30 = "com.poddersinthechat.app.action.FORWARD_30"
     }
 }

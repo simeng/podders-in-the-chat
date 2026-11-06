@@ -388,7 +388,7 @@ fun MainScreen(viewModel: PodcastViewModel) {
             playbackSpeed = playbackSpeed,
             onPlayPauseClick = { viewModel.togglePlayPause() },
             onSeekTo = { posMs -> viewModel.playerManager.seekTo(posMs) },
-            onSkipBackward = { viewModel.playerManager.skipBackward(15) },
+            onSkipBackward = { viewModel.playerManager.skipBackward(10) },
             onSkipForward = { viewModel.playerManager.skipForward(30) },
             onCycleSpeed = { viewModel.playerManager.cyclePlaybackSpeed() },
             onDismiss = { showFullPlayerSheet = false }

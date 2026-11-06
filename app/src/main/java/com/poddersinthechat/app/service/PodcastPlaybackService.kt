@@ -64,7 +64,7 @@ class PodcastPlaybackService : MediaSessionService() {
 
             when (intent?.action) {
                 ACTION_REWIND -> {
-                    playerManager.skipBackward(15)
+                    playerManager.skipBackward(10)
                     updateNotification()
                 }
                 ACTION_TOGGLE -> {
@@ -176,8 +176,8 @@ class PodcastPlaybackService : MediaSessionService() {
         )
 
         val rewindAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_replay_15,
-            "Rewind 15s",
+            R.drawable.ic_replay_10,
+            "Rewind 10s",
             rewindIntent
         ).build()
 

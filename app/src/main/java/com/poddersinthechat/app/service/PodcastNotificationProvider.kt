@@ -26,14 +26,15 @@ class PodcastNotificationProvider(
     ): ImmutableList<CommandButton> {
         val buttons = ImmutableList.builder<CommandButton>()
 
-        // 1. Skip Back (-15s) - In compact view slot 0
+        // 1. Skip Back (-10s) - In compact view slot 0
         val seekBackBundle = Bundle().apply {
             putInt(COMMAND_KEY_COMPACT_VIEW_INDEX, 0)
         }
         buttons.add(
-            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_10)
                 .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-                .setDisplayName("Rewind 15s")
+                .setCustomIconResId(R.drawable.ic_replay_10)
+                .setDisplayName("Rewind 10s")
                 .setExtras(seekBackBundle)
                 .build()
         )
@@ -59,6 +60,7 @@ class PodcastNotificationProvider(
         buttons.add(
             CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_30)
                 .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+                .setCustomIconResId(R.drawable.ic_forward_30)
                 .setDisplayName("Skip 30s")
                 .setExtras(seekForwardBundle)
                 .build()
