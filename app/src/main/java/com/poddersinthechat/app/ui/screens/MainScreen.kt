@@ -83,6 +83,11 @@ fun MainScreen(viewModel: PodcastViewModel) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
 
+    // Podcast catalog search state
+    val podcastSearchResults by viewModel.podcastSearchResults.collectAsState()
+    val podcastSearchQuery by viewModel.podcastSearchQuery.collectAsState()
+    val recommendationsStatus by viewModel.recommendationsStatus.collectAsState()
+
     // Player state
     val currentEpisode by viewModel.playerManager.currentEpisode.collectAsState()
     val isPlaying by viewModel.playerManager.isPlaying.collectAsState()
@@ -367,6 +372,11 @@ fun MainScreen(viewModel: PodcastViewModel) {
     if (showSubscriptionsDialog) {
         SubscriptionsDialog(
             subscribedFeeds = feeds,
+            podcastSearchResults = podcastSearchResults,
+            recommendationsStatus = recommendationsStatus,
+            podcastSearchQuery = podcastSearchQuery,
+            onPodcastSearchQueryChange = { viewModel.setPodcastSearchQuery(it) },
+            onLoadRecommendations = { viewModel.loadRecommendations() },
             onSubscribe = { url, onComplete ->
                 viewModel.subscribeFeed(url, onComplete)
             },

@@ -24,7 +24,8 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return PodcastViewModel(
                     feedRepository = app.feedRepository,
-                    playerManager = app.playerManager
+                    playerManager = app.playerManager,
+                    recommendationsRepository = app.recommendationsRepository
                 ) as T
             }
         }

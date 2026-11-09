@@ -8,6 +8,10 @@ A modern, fast, native Android podcast player built with Jetpack Compose, Kotlin
   - Add any custom podcast RSS feed URL via the Subscriptions sheet.
   - Explore & one-tap subscribe to curated sample feeds (Syntax, NPR News Now, The Changelog, BBC Global News).
   - Manage your subscriptions (view episode count, unsubscribe/delete).
+- **Podcast Catalog Search**:
+  - Downloads the PodcastIndex recommendations catalog (`https://public.podcastindex.org/recommendations.json`, ~24 MB, 25k podcasts) into a local cache and re-downloads it at most once a month.
+  - If a download fails, the stale cache is used, so search keeps working offline.
+  - Search by podcast name in the Subscriptions sheet and add (subscribe to) any result with one tap; empty query shows the most popular podcasts.
 - **Auto-Refresh on App Launch**:
   - Whenever the app launches, it automatically connects to all subscribed RSS feeds in the background, parses updates, and populates the episode feed.
   - Manual pull/button refresh with spinning animation and progress indicator.
@@ -57,11 +61,14 @@ A modern, fast, native Android podcast player built with Jetpack Compose, Kotlin
 │   │   │   │   │   └── PodcastDao.kt
 │   │   │   │   ├── model/
 │   │   │   │   │   ├── Episode.kt
-│   │   │   │   │   └── PodcastFeed.kt
+│   │   │   │   │   ├── PodcastFeed.kt
+│   │   │   │   │   └── Recommendation.kt
 │   │   │   │   ├── parser/
+│   │   │   │   │   ├── RecommendationsParser.kt
 │   │   │   │   │   └── RssParser.kt
 │   │   │   │   └── repository/
-│   │   │   │       └── FeedRepository.kt
+│   │   │   │       ├── FeedRepository.kt
+│   │   │   │       └── RecommendationsRepository.kt
 │   │   │   ├── player/
 │   │   │   │   └── PodcastPlayerManager.kt
 │   │   │   ├── service/
