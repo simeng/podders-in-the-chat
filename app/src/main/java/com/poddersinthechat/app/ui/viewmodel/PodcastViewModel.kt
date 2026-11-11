@@ -34,7 +34,8 @@ class PodcastViewModel(
 
     val isRefreshing: StateFlow<Boolean> = feedRepository.isRefreshing
 
-    private val _selectedFilter = MutableStateFlow(EpisodeFilter.ALL)
+    // Start on the "Newest" tab so fresh episodes are what the app opens to
+    private val _selectedFilter = MutableStateFlow(EpisodeFilter.NEWEST)
     val selectedFilter: StateFlow<EpisodeFilter> = _selectedFilter.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")

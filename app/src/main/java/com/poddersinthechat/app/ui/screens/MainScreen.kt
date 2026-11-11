@@ -2,6 +2,7 @@ package com.poddersinthechat.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -26,10 +27,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +47,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -57,6 +62,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +79,8 @@ import com.poddersinthechat.app.ui.theme.NewBadgeColor
 import com.poddersinthechat.app.ui.theme.PrimaryPurple
 import com.poddersinthechat.app.ui.viewmodel.EpisodeFilter
 import com.poddersinthechat.app.ui.viewmodel.PodcastViewModel
+
+private const val LOADING_PLACEHOLDER_COUNT = 8
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -306,7 +315,22 @@ fun MainScreen(viewModel: PodcastViewModel) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (episodes.isEmpty()) {
+            if (isRefreshing) {
+                // Skeleton placeholder cards while the feeds are refreshing
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(LOADING_PLACEHOLDER_COUNT) { index ->
+                        EpisodePlaceholderCard(
+                            // Vary the width per row so the shimmer looks less uniform
+                            titleWidthFraction = 0.45f + ((index * 13) % 40) / 100f,
+                            descriptionVisible = index % 3 != 2
+                        )
+                    }
+                }
+            } else if (episodes.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -403,5 +427,144 @@ fun MainScreen(viewModel: PodcastViewModel) {
             onCycleSpeed = { viewModel.playerManager.cyclePlaybackSpeed() },
             onDismiss = { showFullPlayerSheet = false }
         )
+    }
+}
+
+/**
+ * Skeleton placeholder card shown in the content list while feeds are
+ * refreshing. Mirrors the layout of [EpisodeItem] and gently pulses.
+ */
+@Composable
+private fun EpisodePlaceholderCard(
+    titleWidthFraction: Float,
+    descriptionVisible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // Gentle pulse between 35% and 100% alpha
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    val blockColor = MaterialTheme.colorScheme.surfaceVariant
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+                .alpha(pulseAlpha)
+        ) {
+            // Top row: feed title line + "NEW" badge block
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(90.dp)
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(blockColor)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(52.dp)
+                        .height(18.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(blockColor)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Middle row: artwork square, title + description lines, play button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(blockColor)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(titleWidthFraction)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(blockColor)
+                    )
+                    if (descriptionVisible) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(11.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(blockColor)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.6f)
+                                .height(11.dp)
+                                .padding(top = 6.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(blockColor)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = blockColor,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Bottom row: duration line
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(60.dp)
+                        .height(11.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(blockColor)
+                )
+            }
+        }
     }
 }
