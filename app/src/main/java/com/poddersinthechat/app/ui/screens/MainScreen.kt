@@ -244,67 +244,29 @@ fun MainScreen(viewModel: PodcastViewModel) {
                     }
                 }
 
-                // Filter Chips Row
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    item {
-                        FilterChip(
-                            selected = selectedFilter == EpisodeFilter.ALL,
-                            onClick = { viewModel.setFilter(EpisodeFilter.ALL) },
-                            label = { Text("All Episodes") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = PrimaryPurple,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = selectedFilter == EpisodeFilter.NEWEST,
-                            onClick = { viewModel.setFilter(EpisodeFilter.NEWEST) },
-                            label = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("★ Newest")
-                                }
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = NewBadgeColor,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                    item {
-                        FilterChip(
-                            selected = selectedFilter == EpisodeFilter.IN_PROGRESS,
-                            onClick = { viewModel.setFilter(EpisodeFilter.IN_PROGRESS) },
-                            label = { Text("In Progress") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = PrimaryPurple,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
             }
         },
         bottomBar = {
-            // Persistent Mini-Player at bottom
-            currentEpisode?.let { ep ->
-                MiniPlayer(
-                    episode = ep,
-                    isPlaying = isPlaying,
-                    isLoading = isLoadingAudio,
-                    currentPosMs = currentPosMs,
-                    durationMs = durationMs,
-                    onPlayPauseClick = { viewModel.togglePlayPause() },
-                    onSkipForward = { viewModel.playerManager.skipForward(30) },
-                    onClick = { showFullPlayerSheet = true }
+            Column {
+                // Filter chips near the thumb (above the mini-player) for easy mobile reach
+                FilterChipsRow(
+                    selectedFilter = selectedFilter,
+                    onFilterSelected = { viewModel.setFilter(it) }
                 )
+
+                // Persistent Mini-Player at bottom
+                currentEpisode?.let { ep ->
+                    MiniPlayer(
+                        episode = ep,
+                        isPlaying = isPlaying,
+                        isLoading = isLoadingAudio,
+                        currentPosMs = currentPosMs,
+                        durationMs = durationMs,
+                        onPlayPauseClick = { viewModel.togglePlayPause() },
+                        onSkipForward = { viewModel.playerManager.skipForward(30) },
+                        onClick = { showFullPlayerSheet = true }
+                    )
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -565,6 +527,58 @@ private fun EpisodePlaceholderCard(
                         .background(blockColor)
                 )
             }
+        }
+    }
+}
+
+/**
+ * The episode list filter chips. Rendered at the bottom of the screen (just
+ * above the mini-player) so they are easy to reach on mobile.
+ */
+@Composable
+private fun FilterChipsRow(
+    selectedFilter: EpisodeFilter,
+    onFilterSelected: (EpisodeFilter) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            FilterChip(
+                selected = selectedFilter == EpisodeFilter.ALL,
+                onClick = { onFilterSelected(EpisodeFilter.ALL) },
+                label = { Text("All Episodes") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = PrimaryPurple,
+                    selectedLabelColor = Color.White
+                )
+            )
+        }
+        item {
+            FilterChip(
+                selected = selectedFilter == EpisodeFilter.NEWEST,
+                onClick = { onFilterSelected(EpisodeFilter.NEWEST) },
+                label = { Text("★ Newest") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = NewBadgeColor,
+                    selectedLabelColor = Color.White
+                )
+            )
+        }
+        item {
+            FilterChip(
+                selected = selectedFilter == EpisodeFilter.IN_PROGRESS,
+                onClick = { onFilterSelected(EpisodeFilter.IN_PROGRESS) },
+                label = { Text("In Progress") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = PrimaryPurple,
+                    selectedLabelColor = Color.White
+                )
+            )
         }
     }
 }
