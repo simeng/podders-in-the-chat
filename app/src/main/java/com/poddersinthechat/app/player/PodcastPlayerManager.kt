@@ -200,6 +200,13 @@ class PodcastPlayerManager(
 
     private var progressTrackingJob: Job? = null
 
+    // Id of the episode whose media item is actually loaded in the ExoPlayer.
+    // Null while the player is idle (e.g. an episode restored in stopped state
+    // after an app restart, with no audio attached yet).
+    private var loadedMediaItemId: String? = null
+
+    private var episodeRefreshJob: Job? = null
+
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -243,6 +250,15 @@ class PodcastPlayerManager(
                 PodcastPlaybackService.update(context)
             }
         })
+
+        // Restore the last played episode (e.g. after an app restart or a
+        // headphone disconnect that stopped playback) so the user can press
+        // play and continue from where they left off.
+        scope.launch {
+            feedRepository.getLastPlayedEpisode()?.let { last ->
+                restoreLastEpisode(last)
+            }
+        }
     }
 
     fun playEpisode(episode: Episode) {
@@ -256,8 +272,10 @@ class PodcastPlayerManager(
         persistCurrentProgress()
 
         _currentEpisode.value = episode
+        // Resume from saved position if not already completed and has reasonable start position
+        val resumePos = if (episode.isCompleted) 0L else episode.playbackPositionMs
         _durationMs.value = if (episode.totalDurationMs > 0) episode.totalDurationMs else (episode.durationSeconds * 1000L)
-        _playbackPositionMs.value = episode.playbackPositionMs
+        _playbackPositionMs.value = resumePos
 
         // Clear NEW badge once played
         if (episode.isNew) {
@@ -266,33 +284,12 @@ class PodcastPlayerManager(
             }
         }
 
-        val metadata = MediaMetadata.Builder()
-            .setTitle(episode.title)
-            .setArtist(episode.feedTitle)
-            .setDisplayTitle(episode.title)
-            .setArtworkUri(if (!episode.feedImageUrl.isNullOrEmpty()) Uri.parse(episode.feedImageUrl) else null)
-            .build()
-
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(episode.id)
-            .setUri(episode.audioUrl)
-            .setMediaMetadata(metadata)
-            .build()
-
-        player.setMediaItem(mediaItem)
-
-        // Resume from saved position if not already completed and has reasonable start position
-        val resumePos = if (episode.isCompleted) 0L else episode.playbackPositionMs
-        if (resumePos > 0L) {
-            player.seekTo(resumePos)
-        } else {
-            player.seekTo(0L)
-        }
+        loadMediaItemIntoPlayer(episode, resumePos)
+        observeEpisodeUpdates(episode.id)
 
         // Ensure playback service is running for notification and background execution
         PodcastPlaybackService.start(context)
 
-        player.prepare()
         player.play()
         PodcastPlaybackService.update(context)
     }
@@ -312,8 +309,12 @@ class PodcastPlayerManager(
     }
 
     fun resume() {
-        if (player.playbackState == Player.STATE_IDLE && _currentEpisode.value != null) {
-            player.prepare()
+        val episode = _currentEpisode.value ?: return
+        if (player.playbackState == Player.STATE_IDLE) {
+            // Media item is not loaded yet (e.g. the episode was restored in
+            // stopped state after an app restart). Load it and start at the
+            // saved position.
+            loadMediaItemIntoPlayer(episode, _playbackPositionMs.value)
         }
         PodcastPlaybackService.start(context)
         player.play()
@@ -373,8 +374,66 @@ class PodcastPlayerManager(
         progressTrackingJob = null
     }
 
+    /**
+     * Restores [episode] as the current one without loading it into the ExoPlayer.
+     * The UI shows it in a stopped state at its saved position; pressing play
+     * loads the media and resumes from there. No-op if playback is active.
+     */
+    private fun restoreLastEpisode(episode: Episode) {
+        if (player.playbackState != Player.STATE_IDLE) return
+
+        _currentEpisode.value = episode
+        val resumePos = if (episode.isCompleted) 0L else episode.playbackPositionMs
+        _playbackPositionMs.value = resumePos
+        _durationMs.value = if (episode.totalDurationMs > 0) episode.totalDurationMs else (episode.durationSeconds * 1000L)
+        observeEpisodeUpdates(episode.id)
+    }
+
+    /**
+     * Keeps [_currentEpisode] in sync with the database so feed refreshes
+     * (updated title, artwork, ...) are reflected in the player UI without
+     * touching the live playback position.
+     */
+    private fun observeEpisodeUpdates(episodeId: String) {
+        episodeRefreshJob?.cancel()
+        episodeRefreshJob = scope.launch {
+            feedRepository.getEpisodeFlow(episodeId).collect { fresh ->
+                if (_currentEpisode.value?.id != episodeId) return@collect
+                if (fresh == null && player.playbackState == Player.STATE_IDLE) {
+                    // Row deleted (e.g. feed unsubscribed) while in stopped state
+                    _currentEpisode.value = null
+                } else if (fresh != null) {
+                    _currentEpisode.value = fresh
+                }
+            }
+        }
+    }
+
+    private fun loadMediaItemIntoPlayer(episode: Episode, startPositionMs: Long) {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(episode.title)
+            .setArtist(episode.feedTitle)
+            .setDisplayTitle(episode.title)
+            .setArtworkUri(if (!episode.feedImageUrl.isNullOrEmpty()) Uri.parse(episode.feedImageUrl) else null)
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setMediaId(episode.id)
+            .setUri(episode.audioUrl)
+            .setMediaMetadata(metadata)
+            .build()
+
+        player.setMediaItem(mediaItem)
+        loadedMediaItemId = episode.id
+        player.seekTo(startPositionMs.coerceAtLeast(0L))
+        player.prepare()
+    }
+
     private fun persistCurrentProgress() {
         val episode = _currentEpisode.value ?: return
+        // Don't overwrite the saved position of a stopped/restored episode with
+        // the idle player position (0) when switching episodes or on restart.
+        if (player.playbackState == Player.STATE_IDLE || loadedMediaItemId != episode.id) return
         val pos = player.currentPosition
         val dur = if (player.duration > 0) player.duration else _durationMs.value
         val isCompleted = dur > 0 && pos >= (dur * 0.95f)
@@ -407,6 +466,9 @@ class PodcastPlayerManager(
     fun release() {
         stopProgressTracker()
         persistCurrentProgress()
+        episodeRefreshJob?.cancel()
+        episodeRefreshJob = null
+        loadedMediaItemId = null
         mediaSession.release()
         basePlayer.release()
         PodcastPlaybackService.stop(context)

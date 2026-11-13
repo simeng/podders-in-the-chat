@@ -41,6 +41,10 @@ interface PodcastDao {
     @Query("SELECT * FROM episodes WHERE id = :id LIMIT 1")
     fun getEpisodeFlow(id: String): Flow<Episode?>
 
+    /** The most recently played episode, or null if nothing has ever been played. */
+    @Query("SELECT * FROM episodes WHERE lastPlayedAt > 0 ORDER BY lastPlayedAt DESC LIMIT 1")
+    suspend fun getLastPlayedEpisode(): Episode?
+
     @Query("SELECT * FROM episodes WHERE isNew = 1 ORDER BY pubDate DESC")
     fun getNewEpisodesFlow(): Flow<List<Episode>>
 

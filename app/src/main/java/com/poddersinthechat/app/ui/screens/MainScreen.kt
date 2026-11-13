@@ -254,19 +254,18 @@ fun MainScreen(viewModel: PodcastViewModel) {
                     onFilterSelected = { viewModel.setFilter(it) }
                 )
 
-                // Persistent Mini-Player at bottom
-                currentEpisode?.let { ep ->
-                    MiniPlayer(
-                        episode = ep,
-                        isPlaying = isPlaying,
-                        isLoading = isLoadingAudio,
-                        currentPosMs = currentPosMs,
-                        durationMs = durationMs,
-                        onPlayPauseClick = { viewModel.togglePlayPause() },
-                        onSkipForward = { viewModel.playerManager.skipForward(30) },
-                        onClick = { showFullPlayerSheet = true }
-                    )
-                }
+                // Persistent Mini-Player at bottom (always visible; shows a
+                // stopped state when nothing has been played yet)
+                MiniPlayer(
+                    episode = currentEpisode,
+                    isPlaying = isPlaying,
+                    isLoading = isLoadingAudio,
+                    currentPosMs = currentPosMs,
+                    durationMs = durationMs,
+                    onPlayPauseClick = { viewModel.togglePlayPause() },
+                    onSkipForward = { viewModel.playerManager.skipForward(30) },
+                    onClick = { if (currentEpisode != null) showFullPlayerSheet = true }
+                )
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

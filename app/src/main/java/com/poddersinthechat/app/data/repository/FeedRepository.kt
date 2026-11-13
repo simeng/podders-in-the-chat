@@ -42,6 +42,10 @@ class FeedRepository(
     suspend fun getEpisode(id: String): Episode? =
         podcastDao.getEpisodeById(id)
 
+    /** The most recently played episode, or null if nothing has ever been played. */
+    suspend fun getLastPlayedEpisode(): Episode? =
+        withContext(Dispatchers.IO) { podcastDao.getLastPlayedEpisode() }
+
     /**
      * Subscribes to a new feed URL, fetches and parses it, and stores it in the database.
      */
