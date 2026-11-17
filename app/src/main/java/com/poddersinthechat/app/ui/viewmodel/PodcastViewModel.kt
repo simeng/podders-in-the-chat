@@ -110,7 +110,18 @@ class PodcastViewModel(
         }
     }
 
+    /**
+     * Refreshes all feeds in the background, but only when the cached feed
+     * data (from the last successful refresh — background or foreground)
+     * is older than the 6h stale threshold. Called on app start and by the
+     * manual refresh button; if the cache is fresh, it's a no-op so the
+     * current list just stays on screen.
+     */
     fun refreshFeeds() {
+        if (!feedRepository.isRefreshStale()) {
+            _userMessage.value = "Feeds are up to date (${describeAge(feedRepository.lastRefreshTimeMs)})"
+            return
+        }
         viewModelScope.launch {
             val result = feedRepository.refreshAllFeeds()
             result.onSuccess { count ->
@@ -118,6 +129,16 @@ class PodcastViewModel(
             }.onFailure { err ->
                 _userMessage.value = "Refresh failed: ${err.message}"
             }
+        }
+    }
+
+    private fun describeAge(lastRefreshMs: Long): String {
+        val minutes = (System.currentTimeMillis() - lastRefreshMs) / 60_000L
+        return when {
+            minutes < 1 -> "just now"
+            minutes < 60 -> "$minutes min ago"
+            minutes < 24 * 60 -> "${minutes / 60}h ago"
+            else -> "${minutes / (24 * 60)}d ago"
         }
     }
 
