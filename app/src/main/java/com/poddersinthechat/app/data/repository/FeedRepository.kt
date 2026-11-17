@@ -1,5 +1,7 @@
 package com.poddersinthechat.app.data.repository
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.poddersinthechat.app.data.db.PodcastDao
 import com.poddersinthechat.app.data.model.Episode
 import com.poddersinthechat.app.data.model.PodcastFeed
@@ -16,6 +18,7 @@ import java.util.concurrent.TimeUnit
 
 class FeedRepository(
     private val podcastDao: PodcastDao,
+    context: Context,
     private val rssParser: RssParser = RssParser(),
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -25,6 +28,28 @@ class FeedRepository(
 ) {
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val refreshPrefs: SharedPreferences =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    /**
+     * Epoch millis of the last successful feed refresh (0 = never).
+     * Updated by [refreshAllFeeds] no matter whether it was triggered by the
+     * daily background worker or by a foreground refresh, so the stale check
+     * treats both as the "cached daily refresh".
+     */
+    val lastRefreshTimeMs: Long
+        get() = refreshPrefs.getLong(KEY_LAST_REFRESH_MS, 0L)
+
+    /**
+     * True when the cached feed data is older than [staleAfterMs] (default 6h)
+     * or was never fetched. Used to decide whether launching the app or
+     * tapping refresh should kick off another background update.
+     */
+    fun isRefreshStale(staleAfterMs: Long = REFRESH_STALE_THRESHOLD_MS): Boolean {
+        val last = lastRefreshTimeMs
+        return last == 0L || (System.currentTimeMillis() - last) > staleAfterMs
+    }
 
     private val _lastRefreshError = MutableStateFlow<String?>(null)
     val lastRefreshError: StateFlow<String?> = _lastRefreshError.asStateFlow()
@@ -99,6 +124,9 @@ class FeedRepository(
             if (anyError != null) {
                 _lastRefreshError.value = anyError
             }
+            if (updatedFeedsCount > 0) {
+                refreshPrefs.edit().putLong(KEY_LAST_REFRESH_MS, System.currentTimeMillis()).apply()
+            }
             Result.success(updatedFeedsCount)
         } catch (e: Exception) {
             _lastRefreshError.value = e.message
@@ -146,6 +174,15 @@ class FeedRepository(
     }
 
     companion object {
+        /**
+         * The cached feed data is considered stale (and a foreground refresh
+         * is allowed to run again) after this many milliseconds.
+         */
+        const val REFRESH_STALE_THRESHOLD_MS = 6L * 60L * 60L * 1000L // 6 hours
+
+        private const val PREFS_NAME = "feed_refresh"
+        private const val KEY_LAST_REFRESH_MS = "last_refresh_ms"
+
         /**
          * Sample RSS feeds for quick test/demonstration
          */

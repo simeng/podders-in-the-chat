@@ -12,9 +12,10 @@ A modern, fast, native Android podcast player built with Jetpack Compose, Kotlin
   - Downloads the PodcastIndex recommendations catalog (`https://public.podcastindex.org/recommendations.json`, ~24 MB, 25k podcasts) into a local cache and re-downloads it at most once a month.
   - If a download fails, the stale cache is used, so search keeps working offline.
   - Search by podcast name in the Subscriptions sheet and add (subscribe to) any result with one tap; empty query shows the most popular podcasts.
-- **Auto-Refresh on App Launch**:
-  - Whenever the app launches, it automatically connects to all subscribed RSS feeds in the background, parses updates, and populates the episode feed.
-  - Manual pull/button refresh with spinning animation and progress indicator.
+- **Background Feed Refresh**:
+  - A daily background refresh (WorkManager) updates all subscribed RSS feeds once per day at around 12:00, while the device has a network connection.
+  - On app launch or manual refresh, feeds are refreshed in the background only if the last successful refresh is more than 6 hours old; the current list stays on screen (no placeholders) until the update finishes.
+  - Refresh button with spinning animation and progress indicator while an update runs.
 - **Highlights Newest Episodes**:
   - Recent episodes (published within the last 48 hours) are prominently badged with a vibrant `★ NEW` pill tag and subtle glowing border to catch your eye immediately.
   - Dedicated "★ Newest" filter tab to quickly review only new releases.

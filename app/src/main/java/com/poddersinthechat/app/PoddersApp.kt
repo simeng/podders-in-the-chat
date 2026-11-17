@@ -5,6 +5,7 @@ import com.poddersinthechat.app.data.db.AppDatabase
 import com.poddersinthechat.app.data.repository.FeedRepository
 import com.poddersinthechat.app.data.repository.RecommendationsRepository
 import com.poddersinthechat.app.player.PodcastPlayerManager
+import com.poddersinthechat.app.worker.FeedRefreshScheduler
 
 class PoddersApp : Application() {
 
@@ -25,9 +26,12 @@ class PoddersApp : Application() {
         instance = this
 
         database = AppDatabase.getInstance(this)
-        feedRepository = FeedRepository(database.podcastDao())
+        feedRepository = FeedRepository(database.podcastDao(), this)
         recommendationsRepository = RecommendationsRepository(this)
         playerManager = PodcastPlayerManager(this, feedRepository)
+
+        // Refresh all subscribed feeds in the background once a day (~12:00)
+        FeedRefreshScheduler.scheduleDailyRefresh(this)
     }
 
     companion object {
