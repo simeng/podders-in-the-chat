@@ -2,8 +2,10 @@ package com.poddersinthechat.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,11 +20,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -48,6 +52,7 @@ import com.poddersinthechat.app.ui.theme.PrimaryPurple
 import com.poddersinthechat.app.ui.theme.ProgressIndicatorColor
 import com.poddersinthechat.app.ui.theme.ProgressTrack
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EpisodeItem(
     episode: Episode,
@@ -55,7 +60,10 @@ fun EpisodeItem(
     isPlaying: Boolean,
     onPlayClick: () -> Unit,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDownloaded: Boolean = false,
+    downloadProgress: Float? = null, // 0f..1f while downloading, null when idle
+    onLongClick: (() -> Unit)? = null
 ) {
     // Subtle border glow if new or currently playing
     val cardBorder = when {
@@ -73,7 +81,13 @@ fun EpisodeItem(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .let {
+                if (onLongClick != null) {
+                    it.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    it.clickable(onClick = onClick)
+                }
+            },
         shape = RoundedCornerShape(16.dp),
         border = cardBorder,
         colors = CardDefaults.cardColors(containerColor = cardColor),
@@ -113,6 +127,25 @@ fun EpisodeItem(
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
+
+                // OFFLINE AVAILABILITY INDICATOR (downloaded / downloading)
+                if (isDownloaded) {
+                    Icon(
+                        imageVector = Icons.Filled.DownloadForOffline,
+                        contentDescription = "Available offline",
+                        tint = CompletedColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                } else if (downloadProgress != null) {
+                    CircularProgressIndicator(
+                        progress = { downloadProgress },
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = PrimaryPurple
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
 
                 // HIGHLIGHT THE NEWEST ONES
                 if (episode.isNew) {
