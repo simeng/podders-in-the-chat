@@ -193,7 +193,7 @@ fun MainScreen(viewModel: PodcastViewModel) {
                         )
 
                         IconButton(
-                            onClick = { viewModel.refreshFeeds() },
+                            onClick = { viewModel.refreshFeedsNow() },
                             enabled = !isRefreshing
                         ) {
                             Icon(
