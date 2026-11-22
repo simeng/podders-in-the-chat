@@ -155,6 +155,23 @@ class FeedRepository(
         podcastDao.clearNewBadge(episodeId)
     }
 
+    /** Manually marks an episode as played (or unplayed). */
+    suspend fun setCompleted(episodeId: String, isCompleted: Boolean) =
+        withContext(Dispatchers.IO) { podcastDao.setCompleted(episodeId, isCompleted) }
+
+    /**
+     * The next (chronologically later) unplayed episode in the same feed, or
+     * null when the feed has nothing newer to play.
+     */
+    suspend fun getNextEpisodeInFeed(episode: Episode): Episode? =
+        withContext(Dispatchers.IO) {
+            podcastDao.getNextEpisodeInFeed(
+                feedUrl = episode.feedUrl,
+                pubDate = episode.pubDate,
+                excludeId = episode.id
+            )
+        }
+
     private fun fetchAndParse(feedUrl: String): com.poddersinthechat.app.data.parser.ParsedPodcast {
         val request = Request.Builder()
             .url(feedUrl)

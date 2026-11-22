@@ -70,6 +70,41 @@ interface PodcastDao {
     @Query("UPDATE episodes SET isNew = 0 WHERE id = :id")
     suspend fun clearNewBadge(id: String)
 
+    /**
+     * Manually marks an episode as played / unplayed. Marking as played also
+     * fills the progress bar (position = total duration); unplaying resets it.
+     */
+    @Query(
+        """
+        UPDATE episodes
+        SET isCompleted = :isCompleted,
+            playbackPositionMs = CASE
+                WHEN :isCompleted THEN CASE WHEN totalDurationMs > 0 THEN totalDurationMs ELSE durationSeconds * 1000 END
+                ELSE 0
+            END
+        WHERE id = :id
+        """
+    )
+    suspend fun setCompleted(id: String, isCompleted: Boolean)
+
+    /**
+     * The next (chronologically later) unplayed episode in the same feed, used
+     * for auto-advance when the current episode finishes. Null when there is
+     * nothing newer to play.
+     */
+    @Query(
+        """
+        SELECT * FROM episodes
+        WHERE feedUrl = :feedUrl
+          AND id != :excludeId
+          AND isCompleted = 0
+          AND pubDate >= :pubDate
+        ORDER BY pubDate ASC, id ASC
+        LIMIT 1
+        """
+    )
+    suspend fun getNextEpisodeInFeed(feedUrl: String, pubDate: Long, excludeId: String): Episode?
+
     @Query("DELETE FROM episodes WHERE feedUrl = :feedUrl")
     suspend fun deleteEpisodesForFeed(feedUrl: String)
 

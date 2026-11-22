@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,12 +65,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.poddersinthechat.app.data.model.Episode
+import com.poddersinthechat.app.data.model.PodcastFeed
+import com.poddersinthechat.app.ui.components.EpisodeActionSheet
 import com.poddersinthechat.app.ui.components.EpisodeItem
 import com.poddersinthechat.app.ui.components.FullPlayerSheet
 import com.poddersinthechat.app.ui.components.MiniPlayer
+import com.poddersinthechat.app.ui.components.SettingsSheet
 import com.poddersinthechat.app.ui.components.SubscriptionsDialog
 import com.poddersinthechat.app.ui.theme.AccentCoral
 import com.poddersinthechat.app.ui.theme.NewBadgeColor
@@ -99,10 +104,24 @@ fun MainScreen(viewModel: PodcastViewModel) {
     val currentPosMs by viewModel.playerManager.playbackPositionMs.collectAsState()
     val durationMs by viewModel.playerManager.durationMs.collectAsState()
     val playbackSpeed by viewModel.playerManager.playbackSpeed.collectAsState()
+    val nextEpisode by viewModel.nextEpisode.collectAsState()
+    val selectedFeedUrl by viewModel.selectedFeedUrl.collectAsState()
+
+    // Offline downloads + settings
+    val downloads by viewModel.downloads.collectAsState()
+    val activeDownloads by viewModel.activeDownloads.collectAsState()
+    val downloadErrors by viewModel.downloadErrors.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val autoPlayNext by viewModel.autoPlayNext.collectAsState()
+    val autoRefreshEnabled by viewModel.autoRefreshEnabled.collectAsState()
+    val refreshHour by viewModel.refreshHourOfDay.collectAsState()
+    val retentionDays by viewModel.retentionDays.collectAsState()
 
     var showSubscriptionsDialog by remember { mutableStateOf(false) }
     var showFullPlayerSheet by remember { mutableStateOf(false) }
     var showSearchField by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
+    var episodeForActions by remember { mutableStateOf<Episode?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -150,6 +169,15 @@ fun MainScreen(viewModel: PodcastViewModel) {
                         }
                     },
                     actions = {
+                        // Settings
+                        IconButton(onClick = { showSettingsSheet = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
                         // Search Toggle
                         IconButton(onClick = { showSearchField = !showSearchField }) {
                             Icon(
@@ -193,7 +221,7 @@ fun MainScreen(viewModel: PodcastViewModel) {
                         )
 
                         IconButton(
-                            onClick = { viewModel.refreshFeeds() },
+                            onClick = { viewModel.refreshFeedsNow() },
                             enabled = !isRefreshing
                         ) {
                             Icon(
@@ -246,7 +274,10 @@ fun MainScreen(viewModel: PodcastViewModel) {
                 // Filter chips near the thumb (above the mini-player) for easy mobile reach
                 FilterChipsRow(
                     selectedFilter = selectedFilter,
-                    onFilterSelected = { viewModel.setFilter(it) }
+                    onFilterSelected = { viewModel.setFilter(it) },
+                    feeds = feeds,
+                    selectedFeedUrl = selectedFeedUrl,
+                    onFeedSelected = { viewModel.setSelectedFeed(it) }
                 )
 
                 // Persistent Mini-Player at bottom (always visible; shows a
@@ -295,6 +326,8 @@ fun MainScreen(viewModel: PodcastViewModel) {
                                 "No newest episodes found right now.\nTap refresh to check your feeds!"
                             } else if (selectedFilter == EpisodeFilter.IN_PROGRESS) {
                                 "No episodes in progress.\nStart listening to one below!"
+                            } else if (selectedFilter == EpisodeFilter.UNPLAYED) {
+                                "No unplayed episodes.\nYou're all caught up!"
                             } else {
                                 "No episodes found."
                             },
@@ -325,7 +358,10 @@ fun MainScreen(viewModel: PodcastViewModel) {
                                     viewModel.playEpisode(episode)
                                     showFullPlayerSheet = true
                                 }
-                            }
+                            },
+                            isDownloaded = viewModel.downloadRepository.isDownloaded(episode.id),
+                            downloadProgress = activeDownloads[episode.id]?.fraction,
+                            onLongClick = { episodeForActions = episode }
                         )
                     }
                 }
@@ -366,7 +402,55 @@ fun MainScreen(viewModel: PodcastViewModel) {
             onSkipBackward = { viewModel.playerManager.skipBackward(10) },
             onSkipForward = { viewModel.playerManager.skipForward(30) },
             onCycleSpeed = { viewModel.playerManager.cyclePlaybackSpeed() },
-            onDismiss = { showFullPlayerSheet = false }
+            onDismiss = { showFullPlayerSheet = false },
+            nextEpisodeTitle = nextEpisode?.title,
+            onPlayNext = { viewModel.playNextEpisode() }
+        )
+    }
+
+    // Settings sheet (gear icon)
+    if (showSettingsSheet) {
+        SettingsSheet(
+            themeMode = themeMode,
+            onThemeModeChange = { viewModel.setThemeMode(it) },
+            playbackSpeed = playbackSpeed,
+            onPlaybackSpeedChange = { viewModel.setPlaybackSpeed(it) },
+            autoPlayNext = autoPlayNext,
+            onAutoPlayNextChange = { viewModel.setAutoPlayNext(it) },
+            autoRefreshEnabled = autoRefreshEnabled,
+            onAutoRefreshEnabledChange = { viewModel.setAutoRefreshEnabled(it) },
+            refreshHourOfDay = refreshHour,
+            onRefreshHourChange = { viewModel.setRefreshHourOfDay(it) },
+            retentionDays = retentionDays,
+            onRetentionDaysChange = { viewModel.setRetentionDays(it) },
+            downloadFileCount = downloads.size,
+            downloadTotalSizeBytes = viewModel.downloadRepository.totalSizeBytes,
+            onClearAllDownloads = { viewModel.clearAllDownloads() },
+            onDismiss = { showSettingsSheet = false }
+        )
+    }
+
+    // Long-press episode action sheet (download / mark played)
+    episodeForActions?.let { episode ->
+        val dl = downloads[episode.id]
+        EpisodeActionSheet(
+            episode = episode,
+            isDownloaded = viewModel.downloadRepository.isDownloaded(episode.id),
+            downloadedAt = dl?.downloadedAt ?: 0L,
+            daysLeft = dl?.let { viewModel.downloadRepository.daysLeft(it) } ?: 0,
+            downloadProgress = activeDownloads[episode.id]?.fraction,
+            downloadError = downloadErrors[episode.id],
+            onDownload = { viewModel.downloadEpisode(episode) },
+            onCancelDownload = { viewModel.cancelDownload(episode.id) },
+            onDeleteDownload = {
+                viewModel.deleteDownload(episode.id)
+                episodeForActions = null
+            },
+            onMarkPlayed = { completed ->
+                viewModel.markEpisodePlayed(episode, completed)
+                episodeForActions = null
+            },
+            onDismiss = { episodeForActions = null }
         )
     }
 }
@@ -378,7 +462,10 @@ fun MainScreen(viewModel: PodcastViewModel) {
 @Composable
 private fun FilterChipsRow(
     selectedFilter: EpisodeFilter,
-    onFilterSelected: (EpisodeFilter) -> Unit
+    onFilterSelected: (EpisodeFilter) -> Unit,
+    feeds: List<PodcastFeed>,
+    selectedFeedUrl: String?,
+    onFeedSelected: (String?) -> Unit
 ) {
     LazyRow(
         modifier = Modifier
@@ -419,6 +506,51 @@ private fun FilterChipsRow(
                     selectedLabelColor = Color.White
                 )
             )
+        }
+        item {
+            FilterChip(
+                selected = selectedFilter == EpisodeFilter.UNPLAYED,
+                onClick = { onFilterSelected(EpisodeFilter.UNPLAYED) },
+                label = { Text("Unplayed") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = PrimaryPurple,
+                    selectedLabelColor = Color.White
+                )
+            )
+        }
+
+        // Per-feed filters (only when there's more than one feed)
+        if (feeds.size > 1) {
+            item {
+                Spacer(modifier = Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(28.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
+            }
+            items(feeds, key = { it.feedUrl }) { feed ->
+                val isFeedSelected = selectedFeedUrl == feed.feedUrl
+                FilterChip(
+                    selected = isFeedSelected,
+                    onClick = {
+                        // Tapping the selected feed chip again clears the filter
+                        onFeedSelected(if (isFeedSelected) null else feed.feedUrl)
+                    },
+                    label = {
+                        Text(
+                            text = feed.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryPurple,
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
         }
     }
 }
