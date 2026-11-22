@@ -6,31 +6,39 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.poddersinthechat.app.data.SettingsStore
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 /**
- * Schedules the daily background feed refresh to run at around 12:00 (noon).
+ * Schedules the daily background feed refresh.
  *
- * The first run is delayed until the next noon, then repeats every 24 hours,
- * which keeps it anchored to noon (modulo daylight-saving shifts). Safe to
- * call repeatedly: the unique work name + KEEP policy makes rescheduling a
- * no-op for an already scheduled refresh.
+ * Whether it runs and at what hour are user settings (see [SettingsStore]);
+ * [applySettings] is the single entry point that reconciles WorkManager with
+ * those settings — call it on app start and whenever the user changes them.
+ * With auto-refresh disabled the periodic work is cancelled entirely and
+ * feeds only update via the manual refresh button.
  */
 object FeedRefreshScheduler {
 
     private const val WORK_NAME = "podders_daily_feed_refresh"
-    const val REFRESH_HOUR_OF_DAY = 12
+    const val DEFAULT_REFRESH_HOUR = 12
 
-    fun scheduleDailyRefresh(context: Context) {
+    /**
+     * Schedules (or reschedules) the daily refresh to run at
+     * [hourOfDay]:00. The first run is delayed until the next occurrence of
+     * that hour, then repeats every 24 hours, keeping it anchored to the
+     * chosen hour (modulo daylight-saving shifts).
+     */
+    fun scheduleDailyRefresh(context: Context, hourOfDay: Int = DEFAULT_REFRESH_HOUR) {
         val now = System.currentTimeMillis()
         val nextRun = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, REFRESH_HOUR_OF_DAY)
+            set(Calendar.HOUR_OF_DAY, hourOfDay.coerceIn(0, 23))
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
             if (timeInMillis <= now) {
-                add(Calendar.DAY_OF_MONTH, 1) // noon already passed today → tomorrow
+                add(Calendar.DAY_OF_MONTH, 1) // that hour already passed today → tomorrow
             }
         }.timeInMillis
 
@@ -43,10 +51,28 @@ object FeedRefreshScheduler {
             )
             .build()
 
+        // UPDATE: changing the hour in settings replaces the scheduled run
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
+    }
+
+    fun cancelDailyRefresh(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+    }
+
+    /** Reconciles the scheduled work with the user's settings. */
+    fun applySettings(context: Context, enabled: Boolean, hourOfDay: Int) {
+        if (enabled) {
+            scheduleDailyRefresh(context, hourOfDay)
+        } else {
+            cancelDailyRefresh(context)
+        }
+    }
+
+    fun applySettings(context: Context, settings: SettingsStore) {
+        applySettings(context, settings.autoRefreshEnabled.value, settings.refreshHourOfDay.value)
     }
 }

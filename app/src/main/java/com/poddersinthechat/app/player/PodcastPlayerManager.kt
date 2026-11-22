@@ -21,7 +21,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.poddersinthechat.app.MainActivity
 import com.poddersinthechat.app.R
+import com.poddersinthechat.app.data.SettingsStore
 import com.poddersinthechat.app.data.model.Episode
+import com.poddersinthechat.app.data.repository.DownloadRepository
 import com.poddersinthechat.app.data.repository.FeedRepository
 import com.poddersinthechat.app.service.PodcastPlaybackService
 import kotlinx.coroutines.CoroutineScope
@@ -29,15 +31,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class PodcastPlayerManager(
     private val context: Context,
-    private val feedRepository: FeedRepository
+    private val feedRepository: FeedRepository,
+    private val settingsStore: SettingsStore,
+    private val downloadRepository: DownloadRepository? = null
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -192,8 +199,16 @@ class PodcastPlayerManager(
     private val _durationMs = MutableStateFlow(0L)
     val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
 
-    private val _playbackSpeed = MutableStateFlow(1.0f)
+    // Initial speed comes from the user's saved preference (Settings screen)
+    private val _playbackSpeed = MutableStateFlow(settingsStore.playbackSpeed.value)
     val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    /**
+     * Emits the episode that was auto-started after the previous one finished.
+     * The UI shows a snackbar for it; the player itself needs no feedback.
+     */
+    private val _autoAdvanceEvents = MutableSharedFlow<Episode>(extraBufferCapacity = 1)
+    val autoAdvanceEvents: SharedFlow<Episode> = _autoAdvanceEvents.asSharedFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -417,14 +432,20 @@ class PodcastPlayerManager(
             .setArtworkUri(if (!episode.feedImageUrl.isNullOrEmpty()) Uri.parse(episode.feedImageUrl) else null)
             .build()
 
+        // Prefer a local offline copy when one exists; otherwise stream as usual.
+        val localFile = downloadRepository?.localFileFor(episode.id)
+        val uri = if (localFile != null) Uri.fromFile(localFile) else Uri.parse(episode.audioUrl)
+
         val mediaItem = MediaItem.Builder()
             .setMediaId(episode.id)
-            .setUri(episode.audioUrl)
+            .setUri(uri)
             .setMediaMetadata(metadata)
             .build()
 
         player.setMediaItem(mediaItem)
         loadedMediaItemId = episode.id
+        // Keep the user's chosen speed across episode switches
+        player.playbackParameters = PlaybackParameters(_playbackSpeed.value)
         player.seekTo(startPositionMs.coerceAtLeast(0L))
         player.prepare()
     }
@@ -458,6 +479,19 @@ class PodcastPlayerManager(
                 totalDurationMs = dur,
                 isCompleted = true
             )
+
+            // Auto-advance: play the next (chronologically later) unplayed
+            // episode in the same feed, when the user enabled it.
+            val next = if (settingsStore.autoPlayNext.value) {
+                feedRepository.getNextEpisodeInFeed(episode)
+            } else {
+                null
+            }
+            if (next != null) {
+                _autoAdvanceEvents.tryEmit(next)
+                // Switch on the main thread after the DB write above has run
+                launch(Dispatchers.Main) { playEpisode(next) }
+            }
         }
         _playbackPositionMs.value = dur
         _isPlaying.value = false
