@@ -17,6 +17,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Schedule
@@ -30,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -66,6 +70,8 @@ fun SettingsSheet(
     downloadFileCount: Int,
     downloadTotalSizeBytes: Long,
     onClearAllDownloads: () -> Unit,
+    onImportOpml: () -> Unit,
+    onExportOpml: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -247,6 +253,49 @@ fun SettingsSheet(
                             )
                         )
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ----- Subscriptions (OPML import/export) -----
+            SectionHeader(
+                icon = Icons.Filled.ImportExport,
+                title = "Subscriptions"
+            )
+
+            Text(
+                text = "Move your subscriptions between podcast apps with an OPML file",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onImportOpml,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.FileOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Import OPML", fontSize = 13.sp)
+                }
+                OutlinedButton(
+                    onClick = onExportOpml,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.FileUpload,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Export OPML", fontSize = 13.sp)
                 }
             }
 

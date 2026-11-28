@@ -1,5 +1,7 @@
 package com.poddersinthechat.app.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -82,6 +84,20 @@ import com.poddersinthechat.app.ui.theme.PrimaryPurple
 import com.poddersinthechat.app.ui.viewmodel.EpisodeFilter
 import com.poddersinthechat.app.ui.viewmodel.PodcastViewModel
 
+/**
+ * MIME types offered by the document picker when importing OPML files. OPML
+ * is usually served as text/x-opml, but file managers often report it as
+ * plain text, generic XML, or no type at all.
+ */
+private val OPML_MIME_TYPES = arrayOf(
+    "text/x-opml",
+    "application/x-opml",
+    "text/xml",
+    "application/xml",
+    "text/plain",
+    "application/octet-stream"
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: PodcastViewModel) {
@@ -122,6 +138,13 @@ fun MainScreen(viewModel: PodcastViewModel) {
     var showSearchField by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
     var episodeForActions by remember { mutableStateOf<Episode?>(null) }
+
+    // OPML import: system document picker, result handled in the ViewModel
+    val importOpmlLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.importOpml(uri)
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -426,6 +449,10 @@ fun MainScreen(viewModel: PodcastViewModel) {
             downloadFileCount = downloads.size,
             downloadTotalSizeBytes = viewModel.downloadRepository.totalSizeBytes,
             onClearAllDownloads = { viewModel.clearAllDownloads() },
+            onImportOpml = {
+                importOpmlLauncher.launch(OPML_MIME_TYPES)
+            },
+            onExportOpml = { viewModel.exportOpml() },
             onDismiss = { showSettingsSheet = false }
         )
     }

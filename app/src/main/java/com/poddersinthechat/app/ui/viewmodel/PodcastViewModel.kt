@@ -3,12 +3,16 @@ package com.poddersinthechat.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import com.poddersinthechat.app.data.SettingsStore
 import com.poddersinthechat.app.data.ThemeMode
 import com.poddersinthechat.app.data.model.DownloadedEpisode
 import com.poddersinthechat.app.data.model.Episode
 import com.poddersinthechat.app.data.model.PodcastFeed
 import com.poddersinthechat.app.data.model.Recommendation
+import com.poddersinthechat.app.data.parser.OpmlExporter
+import com.poddersinthechat.app.data.parser.OpmlParser
 import com.poddersinthechat.app.data.repository.DownloadRepository
 import com.poddersinthechat.app.data.repository.FeedRepository
 import com.poddersinthechat.app.data.repository.RecommendationsRepository
@@ -22,8 +26,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class EpisodeFilter {
     ALL,
@@ -364,6 +370,77 @@ class PodcastViewModel(
             downloadRepository.deleteAllDownloads()
             _userMessage.value = "All offline downloads removed"
         }
+    }
+
+    // ----- OPML import / export -----
+
+    /**
+     * Imports subscriptions from an OPML file (the [uri] comes from a system
+     * document picker). Feeds that are already subscribed are skipped; new
+     * ones are fetched and added one by one, like manual subscriptions.
+     */
+    fun importOpml(uri: Uri) {
+        viewModelScope.launch {
+            _userMessage.value = "Importing OPML subscriptions…"
+            try {
+                val entries = withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                        OpmlParser.parse(stream)
+                    } ?: throw IllegalStateException("Could not read file")
+                }
+
+                if (entries.isEmpty()) {
+                    _userMessage.value = "No podcast feeds found in that OPML file"
+                    return@launch
+                }
+
+                val existingUrls = feeds.value.map { it.feedUrl.lowercase() }.toSet()
+                val newEntries = entries
+                    .map { it.url.trim() to it.title }
+                    .filter { (url, _) -> url.lowercase() !in existingUrls }
+                    .distinctBy { (url, _) -> url.lowercase() }
+
+                if (newEntries.isEmpty()) {
+                    _userMessage.value = "All ${entries.size} podcasts from the file are already subscribed"
+                    return@launch
+                }
+
+                var imported = 0
+                for ((url, _) in newEntries) {
+                    feedRepository.subscribeFeed(url).onSuccess { imported++ }
+                }
+                val failed = newEntries.size - imported
+                _userMessage.value = when {
+                    failed == 0 -> "Imported $imported podcasts from OPML"
+                    imported == 0 -> "Import failed: none of the ${newEntries.size} feeds could be fetched"
+                    else -> "Imported $imported podcasts ($failed failed to fetch)"
+                }
+            } catch (e: Exception) {
+                _userMessage.value = "Could not import OPML: ${e.message ?: "unknown error"}"
+            }
+        }
+    }
+
+    /**
+     * Exports all subscriptions as an OPML document via the system share
+     * sheet (save to a file, e-mail, drive, …).
+     */
+    fun exportOpml() {
+        val current = feeds.value
+        if (current.isEmpty()) {
+            _userMessage.value = "Nothing to export — no subscriptions yet"
+            return
+        }
+        val opml = OpmlExporter.build(current)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/x-opml"
+            putExtra(Intent.EXTRA_TEXT, opml)
+            putExtra(Intent.EXTRA_SUBJECT, "Podders in the Chat subscriptions")
+        }
+        appContext.startActivity(
+            Intent.createChooser(shareIntent, "Export subscriptions")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     // ----- Manual completion -----
